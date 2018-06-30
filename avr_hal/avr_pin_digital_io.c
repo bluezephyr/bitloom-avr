@@ -11,12 +11,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <avr/io.h>
-
 #include "port_config.h"
 
-void pin_digital_io_write(uint16_t pin_id, bool on)
-{
-}
 
 void pin_digital_io_write_high(uint16_t pin_id)
 {
