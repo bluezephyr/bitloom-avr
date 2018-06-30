@@ -16,5 +16,15 @@
 
 void pin_digital_io_write(uint16_t pin_id, bool on)
 {
-    LED_PORT |= (on << pin_id);
 }
+
+void pin_digital_io_write_high(uint16_t pin_id)
+{
+    LED_PORT |= (1 << pin_id);
+}
+
+void pin_digital_io_write_low(uint16_t pin_id)
+{
+    LED_PORT &= ~(1 << pin_id);
+}
+
