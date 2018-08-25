@@ -69,14 +69,14 @@ i2c_result_t i2c_write_byte (uint8_t byte)
         case TW_MT_DATA_NACK:
             return i2c_nack_received;
         case TW_MT_ARB_LOST:
-            return arbitration_lost_error;
+            return i2c_arbitration_lost;
         default:
-            return operation_error;
+            return i2c_operation_error;
     }
 }
 
 uint8_t i2c_read_byte (uint8_t send_ack)
 {
     // Not implemented
-    return operation_error;
+    return i2c_operation_error;
 }
