@@ -20,9 +20,11 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -Wall -Wstrict-prototypes -g -ggdb")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--relax")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 
-set(PROJECT_CONFIG_DIR avr_config)
+set(TOOLCHAIN_DIR ${CMAKE_CURRENT_LIST_DIR})
+set(BITLOOM_HAL ${TOOLCHAIN_DIR}/avr_hal )
 
 # Print configuration
+message( STATUS "Toolchain CMakefile directory: ${TOOLCHAIN_DIR}")
 message( STATUS "AVR MCU: ${MCU}" )
 message( STATUS "CPU Frequency: ${F_CPU} Hz" )
 message( STATUS "BAUD Rate: ${BAUD}" )

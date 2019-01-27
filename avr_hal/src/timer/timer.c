@@ -11,7 +11,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/power.h>
-#include "scheduler.h"
+#include "core/scheduler.h"
 
 /*
  * Timer 0 is used to schedule the tasks.

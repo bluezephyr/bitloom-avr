@@ -8,7 +8,7 @@
  *
  */
 
-#include "i2c.h"
+#include "hal/i2c.h"
 #include <util/twi.h>
 
 static void inline i2c_wait_for_complete (void)
