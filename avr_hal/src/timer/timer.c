@@ -1,7 +1,7 @@
 /*
  * Implementation of the timer module for AVR.
  *
- * Copyright (c) 2018. BlueZephyr
+ * Copyright (c) 2020. BlueZephyr
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,7 +11,9 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/power.h>
-#include "core/scheduler.h"
+#include <config/timer_config.h>
+
+volatile Tick_t avr_ticks;
 
 /*
  * Timer 0 is used to schedule the tasks.
@@ -44,14 +46,8 @@ void timer_init (void)
 #elif F_CPU == 8000000
     TCCR0B = (1 << CS01) | (1 << CS00);
 #endif
-}
 
-/*
- * Interrupt routine to update the task timers.
- */
-ISR(TIMER0_COMPA_vect)
-{
-    schedule_timer_tick();
+    avr_ticks = 0;
 }
 
 void timer_start (void)
@@ -62,3 +58,12 @@ void timer_start (void)
 void timer_stop (void)
 {
 }
+
+/*
+ * Interrupt routine to update the ticks.
+ */
+ISR(TIMER0_COMPA_vect)
+{
+    ++avr_ticks;
+}
+

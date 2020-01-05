@@ -11,8 +11,11 @@ set(CMAKE_C_COMPILER ${AVR_CC})
 set(MCU atmega328p)
 set(F_CPU 8000000)
 set(BAUD 9600)
-set(AVR_PROGRAMMER usbtiny)
-set(AVR_PROGRAMMER_ARGS "-b 19200")
+#set(AVR_PROGRAMMER usbtiny)
+set(AVR_PROGRAMMER avrisp)
+set(AVR_PROGRAMMER_ARGS -b 19200)
+set(AVR_PROGRAMMER_PORT -P /dev/ttyACM0)
+
 
 set(CMAKE_C_FLAGS "-mmcu=${MCU} -DF_CPU=${F_CPU}UL -DBAUD=${BAUD}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-Map,mapfile.map")
@@ -45,7 +48,7 @@ function(cc_add_executable NAME)
     add_executable(${elf_file} EXCLUDE_FROM_ALL ${ARGN})
     add_custom_target(${NAME} ALL DEPENDS ${hex_file})
 
-    # Save the original name to be used in the cc_target_inlcude_directories
+    # Save the original name to be used in the cc_target_include_directories
     # and cc_target_link_libraries function calls
     set_target_properties( ${NAME} PROPERTIES OUTPUT_NAME "${elf_file}" )
 
@@ -59,7 +62,7 @@ function(cc_add_executable NAME)
     # Flash target
     add_custom_target(
             flash
-            COMMAND ${AVRDUDE} -p ${MCU} -c ${AVR_PROGRAMMER} ${AVR_PROGRAMMER_ARGS} -U flash:w:${hex_file}
+            COMMAND ${AVRDUDE} -p ${MCU} -c ${AVR_PROGRAMMER} ${AVR_PROGRAMMER_ARGS} ${AVR_PROGRAMMER_PORT} -U flash:w:${hex_file}
             DEPENDS ${hex_file}
             COMMENT "Flashing ${hex_file} to ${MCU} using ${AVR_PROGRAMMER}"
             VERBATIM
@@ -98,3 +101,4 @@ function(cc_target_link_libraries NAME)
     get_target_property(TARGET ${NAME} OUTPUT_NAME)
     target_link_libraries(${TARGET} ${ARGN})
 endfunction(cc_target_link_libraries)
+
