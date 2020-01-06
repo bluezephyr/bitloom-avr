@@ -7,4 +7,4 @@ add_library(timer
         timer.c
         )
 
-target_include_directories(timer PRIVATE ${BITLOOM_ROOT}/bitloom-core/include)
+target_include_directories(timer PRIVATE ${BITLOOM_CORE}/include)
