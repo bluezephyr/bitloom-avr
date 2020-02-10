@@ -7,3 +7,4 @@ add_library(uart
         )
 
 target_include_directories(uart PRIVATE ${BITLOOM_CORE}/include)
+target_include_directories(uart PRIVATE ${CUTIL}/include)

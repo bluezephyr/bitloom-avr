@@ -12,18 +12,19 @@
 #include <avr/interrupt.h>
 #include <util/setbaud.h>
 #include "hal/uart.h"
+#include "bytebuffer.h"
+
+static uint8_t inBufferData[INBUFFER_DATA_SIZE];
 
 typedef struct
 {
-    uint8_t inBuffer;
-    uint8_t inLen;
+    bytebuffer_t inBuffer;
 } uart_t;
 static uart_t self;
 
 void uart_init (void)
 {
-    self.inBuffer = 0;
-    self.inLen = 0;
+    bytebuffer_init(&self.inBuffer, inBufferData, INBUFFER_DATA_SIZE);
 
     UBRR0H = UBRRH_VALUE;
     UBRR0L = UBRRL_VALUE;
@@ -41,10 +42,9 @@ void uart_init (void)
 int8_t uart_read (uint8_t* buffer, int8_t nbyte)
 {
     (void)nbyte;
-    if (self.inLen != 0)
+    if (!bytebuffer_isEmpty(&self.inBuffer))
     {
-        *buffer = self.inBuffer;
-        self.inLen = 0;
+        *buffer = bytebuffer_read(&self.inBuffer);
         return 1;
     }
 
@@ -53,7 +53,11 @@ int8_t uart_read (uint8_t* buffer, int8_t nbyte)
 
 ISR(USART_RX_vect)
 {
-    self.inLen = 1;
-    self.inBuffer = UDR0;
+    uint8_t data = UDR0;
+
+    if (!bytebuffer_isFull(&self.inBuffer))
+    {
+        bytebuffer_write(&self.inBuffer, data);
+    }
 }
 
