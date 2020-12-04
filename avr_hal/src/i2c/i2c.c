@@ -10,6 +10,7 @@
 
 #include "hal/i2c.h"
 #include <util/twi.h>
+#include <avr/interrupt.h>
 
 /*
  * The TWINT Flag is set in the following situations:
@@ -21,6 +22,8 @@
  * - After the TWI has received a data byte.
  * - After a STOP or REPEATED START has been received while still addressed as a Slave.
  * - When a bus error has occurred due to an illegal START or STOP condition.
+ *
+ * The flag is cleared by writing a 1 to it.
  */
 
 /*
@@ -40,7 +43,6 @@ typedef enum
 {
     idle,
     start,
-    stop,
     send_sla_w,
     write_data,
     write_register
@@ -106,13 +108,13 @@ i2c_operation_status_t i2c_get_operation_status(void)
 static inline void i2c_send_start (void)
 {
     // Datasheet page 217 (v 1/2015)
-    TWCR |= (1 << TWINT) | (1 << TWEN) | (1 << TWSTA);
+    TWCR |= (1 << TWINT) | (1 << TWEN) | (1 << TWSTA) | (1 << TWIE);
 }
 
 static inline void i2c_write_byte (uint8_t byte)
 {
     TWDR = byte;
-    TWCR = (1 << TWINT) | (1 << TWEN);
+    TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
 }
 
 i2c_operation_status_t i2c_restart (void)
@@ -132,61 +134,69 @@ static inline void i2c_send_stop (void)
     TWCR |= (1 << TWINT) | (1 << TWEN) | (1 << TWSTO);
 }
 
-// TODO: Change to ISR
-void i2c_callback_TWINT(void)
+/*
+ * The main processing of the TWI communication is done in interrupt context.
+ */
+ISR(TWI_vect)
 {
     switch (self.state)
     {
         case idle:
             // Error - cannot happen
+            self.operation_status = i2c_general_error;
             break;
 
         case start:
-            // Verify that the operation succeeded (TW_START)
-            if (TW_STATUS != TW_START)
+            if (TW_STATUS == TW_START)
+            {
+                i2c_write_byte(self.slave_address);
+            }
+            else
             {
                 self.operation_status = i2c_start_error;
-                return;
             }
-
-            // Send slave address
-            i2c_write_byte(self.slave_address);
-            break;
+            // Stop shall not be sent
+            return;
 
         case send_sla_w:
-            // TODO: Compare with valid values and handle errors outside the
-            // switch statement?
-            if (TW_STATUS != TW_MT_SLA_ACK)
+            if (TW_STATUS == TW_MT_SLA_ACK)
             {
-                self.operation_status = i2c_sla_error;
+                if (self.operation == write_op)
+                {
+                    self.state = write_data;
+                    i2c_write_byte(self.data[self.handled_bytes++]);
+                }
+                else
+                {
+                    self.state = write_register;
+                }
                 return;
-            }
-
-            if (self.operation == write_op)
-            {
-                self.state = write_data;
-                i2c_write_byte(self.data[self.handled_bytes++]);
             }
             else
             {
-                self.state = write_register;
+                // Stop and return error
+                self.operation_status = i2c_sla_error;
             }
+            break;
 
         case write_data:
-            if (TW_STATUS != TW_MT_DATA_ACK)
+            if (TW_STATUS == TW_MT_DATA_ACK)
             {
-                self.operation_status = i2c_write_error;
-                return;
-            }
-            if (self.handled_bytes < self.data_len)
-            {
-                i2c_write_byte(self.data[self.handled_bytes++]);
+                if (self.handled_bytes < self.data_len)
+                {
+                    i2c_write_byte(self.data[self.handled_bytes++]);
+                    return;
+                }
+                else
+                {
+                    // All bytes written -- stop and return ok
+                    self.operation_status = i2c_ok;
+                }
             }
             else
             {
-                // All bytes written -- stop
-                i2c_send_stop();
-                self.operation_status = i2c_ok;
+                // Stop and return error
+                self.operation_status = i2c_write_error;
             }
             break;
 
@@ -204,10 +214,6 @@ void i2c_callback_TWINT(void)
 //                    return i2c_operation_error;
 //            }
             break;
-
-        case stop:
-            if (TW_STATUS != TW_SR_STOP)
-                while (!(TWCR & (1 << TWSTO)));
-            break;
     }
+    i2c_send_stop();
 }
