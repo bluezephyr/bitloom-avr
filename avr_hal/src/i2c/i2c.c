@@ -55,8 +55,8 @@ static struct i2c_controller_t
     i2c_operation_status_t operation_status;
     i2c_state_t state;
     uint8_t* data;
-    uint16_t data_len;
-    uint16_t handled_bytes;
+    uint8_t data_len;
+    uint8_t handled_bytes;
 } self;
 
 
@@ -77,7 +77,7 @@ void i2c_init (void)
     TWCR |= (1 << TWEN);
 }
 
-void i2c_write (uint8_t address, uint8_t *data, uint16_t data_len)
+void i2c_write (uint8_t address, uint8_t *data, uint8_t data_len)
 {
     if (self.state == idle)
     {
@@ -95,7 +95,7 @@ void i2c_write (uint8_t address, uint8_t *data, uint16_t data_len)
     }
 }
 
-void i2c_read_register (uint8_t slave_id, uint8_t reg, uint8_t *data)
+void i2c_read_register (uint8_t slave_id, uint8_t reg, uint8_t *data, uint8_t data_len)
 {
 
 }
