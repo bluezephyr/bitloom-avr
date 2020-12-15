@@ -18,14 +18,19 @@
  * - After the TWI has transmitted a START/REPEATED START condition.
  * - After the TWI has transmitted SLA+R/W.
  * - After the TWI has transmitted an address byte.
+ * - After the TWI has received a data byte.
  * - After the TWI has lost arbitration.
  * - After the TWI has been addressed by own slave address or general call.
- * - After the TWI has received a data byte.
  * - After a STOP or REPEATED START has been received while still addressed as a Slave.
  * - When a bus error has occurred due to an illegal START or STOP condition.
  *
  * The flag is cleared by writing a 1 to it.
  */
+
+/*
+ * Set bit 0 in slave address to indicate read
+ */
+#define I2C_READ_BIT    0x01
 
 /*
  * Type of operation that the application has requested.
@@ -34,7 +39,7 @@ typedef enum
 {
     read_op,
     read_register_op,
-    write_op
+    write_register_op
 } i2c_operation_t;
 
 /*
@@ -44,16 +49,18 @@ typedef enum
 {
     idle,
     start,
+    repeated_start,
     send_sla_w,
+    write_register,
     write_data,
-    write_register
+    read_data,
 } i2c_state_t;
 
 static struct i2c_controller_t
 {
     i2c_operation_t operation;
     uint8_t slave_address;
-    uint8_t read_register;
+    uint8_t data_register;
     i2c_state_t state;
     uint8_t* buffer;
     uint8_t buffer_length;
@@ -74,7 +81,7 @@ void i2c_init (void)
 {
     self.state = idle;
     self.slave_address = 0;
-    self.read_register = 0;
+    self.data_register = 0;
     self.operation_result = NULL;
     self.operation_status_code = 0;
 
@@ -84,17 +91,19 @@ void i2c_init (void)
     TWCR |= (1 << TWEN);
 }
 
-enum i2c_request_t i2c_write (uint8_t address, uint8_t *buffer, uint8_t length, enum i2c_op_result_t *result)
+enum i2c_request_t
+i2c_write_register(uint8_t address, uint8_t reg, uint8_t *buffer, uint8_t length, enum i2c_op_result_t *result)
 {
     if (self.state == idle)
     {
         // Store the input data
         self.slave_address = address;
+        self.data_register = reg;
         self.buffer = buffer;
         self.buffer_length = length;
 
         // Prepare write operation - will be performed in ISR context
-        self.operation = write_op;
+        self.operation = write_register_op;
         self.operation_result = result;
         *self.operation_result = i2c_operation_processing;
         self.state = start;
@@ -112,7 +121,7 @@ enum i2c_request_t i2c_read_register(uint8_t address, uint8_t read_register, uin
     if (self.state == idle)
     {
         self.slave_address = address;
-        self.read_register = read_register;
+        self.data_register = read_register;
         self.buffer = buffer;
         self.buffer_length = length;
 
@@ -146,21 +155,30 @@ static inline void i2c_write_byte (uint8_t byte)
     TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWIE);
 }
 
-enum i2c_op_result_t i2c_restart (void)
+static inline uint8_t i2c_read_data (void)
 {
-    TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTA);
+    return TWDR;
+}
 
-    //i2c_wait_for_complete();
-    if (TW_STATUS != TW_REP_START)
-    {
-        return i2c_operation_error;
-    }
-    return i2c_operation_ok;
+static inline void i2c_send_ack (void)
+{
+    TWCR = (1 << TWINT) | (1 << TWEA) | (1 << TWIE);
+}
+
+static inline void i2c_send_nack (void)
+{
+    TWCR = (1 << TWINT) | (1 << TWIE);
+}
+
+static inline void i2c_restart (void)
+{
+    TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTA) | (1 << TWIE);
 }
 
 static inline void i2c_send_stop (void)
 {
     TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTO);
+    self.state = idle;
 }
 
 /*
@@ -187,21 +205,38 @@ ISR(TWI_vect)
         case send_sla_w:
             if (TW_STATUS == TW_MT_SLA_ACK)
             {
-                if (self.operation == write_op)
-                {
-                    self.state = write_data;
-                    i2c_write_byte(self.buffer[self.handled_bytes++]);
-                }
-                else
-                {
-                    self.state = write_register;
-                }
+                self.state = write_register;
+                i2c_write_byte(self.buffer[self.data_register]);
                 return;
             }
             else
             {
                 // Stop and return error
                 *self.operation_result = i2c_operation_sla_error;
+                self.operation_status_code = TW_STATUS;
+            }
+            break;
+
+        case write_register:
+            if (TW_STATUS == TW_MT_DATA_ACK)
+            {
+                if (self.operation == write_register_op)
+                {
+                    self.state = write_data;
+                    i2c_write_byte(self.buffer[self.handled_bytes++]);
+                }
+                else
+                {
+                    // Read operation
+                    self.state = repeated_start;
+                    i2c_restart();
+                }
+                return;
+            }
+            else
+            {
+                // Stop and return error
+                *self.operation_result = i2c_operation_write_error;
                 self.operation_status_code = TW_STATUS;
             }
             break;
@@ -228,19 +263,44 @@ ISR(TWI_vect)
             }
             break;
 
-        case write_register:
-//            switch (TW_STATUS)
-//            {
-//                case TW_MT_DATA_ACK:
-//                    return i2c_ack_received;
-//                case TW_MT_SLA_NACK:
-//                case TW_MT_DATA_NACK:
-//                    return i2c_nack_received;
-//                case TW_MT_ARB_LOST:
-//                    return i2c_arbitration_lost;
-//                default:
-//                    return i2c_operation_error;
-//            }
+        case repeated_start:
+            if (TW_STATUS == TW_REP_START)
+            {
+                self.state = read_data;
+                i2c_write_byte(self.slave_address | I2C_READ_BIT);
+                return;
+            }
+            else
+            {
+                // Stop and return error
+                *self.operation_result = i2c_operation_repeated_start_error;
+                self.operation_status_code = TW_STATUS;
+            }
+            break;
+
+        case read_data:
+            //if (TW_STATUS == TW_MR_DATA_ACK)
+            if ((TW_STATUS == TW_MR_SLA_ACK) || (TW_STATUS == TW_MR_DATA_ACK))
+            {
+                self.buffer[self.handled_bytes++] = i2c_read_data();
+                if (self.handled_bytes < self.buffer_length)
+                {
+                    i2c_send_ack();
+                    return;
+                }
+                else
+                {
+                    // All bytes read -- stop and return ok
+                    *self.operation_result = i2c_operation_ok;
+                    i2c_send_nack();
+                }
+            }
+            else
+            {
+                // Stop and return error
+                *self.operation_result = i2c_operation_read_error;
+                self.operation_status_code = TW_STATUS;
+            }
             break;
     }
 
