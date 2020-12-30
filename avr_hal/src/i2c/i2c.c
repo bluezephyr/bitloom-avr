@@ -91,8 +91,8 @@ void i2c_init (void)
     TWCR |= (1 << TWEN);
 }
 
-enum i2c_request_t
-i2c_write_register(uint8_t address, uint8_t reg, uint8_t *buffer, uint8_t length, enum i2c_op_result_t *result)
+enum i2c_request_t i2c_write_register(uint8_t address, uint8_t reg, uint8_t *buffer,
+                                      uint8_t length, enum i2c_op_result_t *result)
 {
     if (self.state == idle)
     {
@@ -120,12 +120,13 @@ enum i2c_request_t i2c_read_register(uint8_t address, uint8_t read_register, uin
 {
     if (self.state == idle)
     {
+        // Store the input data
         self.slave_address = address;
         self.data_register = read_register;
         self.buffer = buffer;
         self.buffer_length = length;
 
-        // Prepare read register operation. Will be started next tick
+        // Prepare read operation - will be performed in ISR context
         self.operation = read_register_op;
         self.operation_result = result;
         *self.operation_result = i2c_operation_processing;
@@ -162,11 +163,12 @@ static inline uint8_t i2c_read_data (void)
 
 static inline void i2c_send_ack (void)
 {
-    TWCR = (1 << TWINT) | (1 << TWEA) | (1 << TWIE);
+    TWCR = (1 << TWINT) | (1 << TWEA) | (1 << TWIE) | (1 << TWEN);
 }
 
 static inline void i2c_send_nack (void)
 {
+    // No need to turn on interrupt again
     TWCR = (1 << TWINT) | (1 << TWIE);
 }
 
@@ -188,6 +190,9 @@ ISR(TWI_vect)
 {
     switch (self.state)
     {
+        case idle:
+            // Nothing to do
+            break;
         case start:
             if (TW_STATUS == TW_START)
             {
@@ -279,7 +284,7 @@ ISR(TWI_vect)
             break;
 
         case read_data:
-            //if (TW_STATUS == TW_MR_DATA_ACK)
+            // Can reach this state from repeated start and read data
             if ((TW_STATUS == TW_MR_SLA_ACK) || (TW_STATUS == TW_MR_DATA_ACK))
             {
                 self.buffer[self.handled_bytes++] = i2c_read_data();
